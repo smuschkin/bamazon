@@ -1,8 +1,9 @@
 var mysql = require("mysql");
 var inquirer = require("inquirer");
+require("console.table");
 
 var connection = mysql.createConnection({
-    host: "127.0.0.1",
+    host: "localhost",
     port: 3306,
     user: "root",
     password: "password",
@@ -11,20 +12,27 @@ var connection = mysql.createConnection({
 connection.connect(function (err) {
     if (err) throw err;
     console.log(`Connected! Check it out: ${connection.threadId}`)
-    afterConnection();
+    loadDatabase();
 });
 
 function afterConnection() {
     var query = connection.query("SELECT * FROM bamazon_db.bamazon_products;", function (err, res) {
         if (err) throw err;
         console.log(res);
-        connection.end();
+        // connection.end();
     });
-    console.log(`The query that ran: ${query.sql}`)
 }
+function loadDatabase(){
+    connection.query("SELECT * FROM bamazon_products;", function(err, res){
+        console.log(err);
+        console.table(res);
+        customerSelection(res);
+    })
 
-function customerSelection() {
-    connection.query("SELECT * FROM bamazon_products");
+
+};
+
+function customerSelection(data) {
     inquirer
         .prompt([
             {
@@ -39,31 +47,45 @@ function customerSelection() {
                         return false;
                     }
                 }
-            },
+            }]).then(function (val) {
+                var lookupID = parseInt(val.id);
+                var product = lookupItem(lookupID, data);
+                customerSelectionQuantity(product);
+            })
+};
+
+function customerSelectionQuantity(product) {
+    inquirer
+        .prompt([
             {
                 name: "stock_quantity",
                 type: "input",
                 message: "How many would you like to purchase?",
-                validate: function (value) {
-                    if (value > 100) {
-                        return false;
-                    }
-                    else {
-                        return true;
-                    }
-                }
             }
-        ])
-        .then(function (results) {
-            var desiredItem;
-            for (var i = 0; i < results.length; i++){
-                if (results[i].name <= results.stock_quantity) {
-                    console.log("Sorry, we don't have enough of that item.")
-                }
-                else {
-                    console.log("Awesome, enjoy!");
-                    (stock_quantity - results)
-                }
-        });
+        ]).then(function(val){
+            var quantity = parseInt(val.stock_quantity);
+            if (quantity > product.stock_quantity) {
+                console.log("Insufficient Stock");
+                loadDatabase();
+            }
+            else {
+                buyItem(product, quantity);
+            }
+        })
 };
-customerSelection();
+
+function lookupItem(id, database) {
+    for (var i = 0; i < database.length; i++){
+        if (database[i].item_id === id){
+            return database[i];
+        }
+    }
+    return null;
+};
+
+function buyItem(product, quantity) {
+    connection.query("UPDATE bamazon_products SET stock_quantity = stock_quantity - ? WHERE item_id = ?", [quantity, product.item_id], function(err, res){
+        console.log("Purchased " + quantity + " " + product.product_name + "'s and owe $" + (product.price * quantity));
+        loadDatabase();
+    })
+};
